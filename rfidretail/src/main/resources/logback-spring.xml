@@ -1,0 +1,67 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- jdbc.sqlonly : Logs only SQL jdbc.sqltiming : Logs the SQL, post-execution, 
+	including timing execution statistics jdbc.audit : Logs ALL JDBC calls except 
+	for ResultSets jdbc.resultset : all calls to ResultSet objects are logged 
+	jdbc.connection : Logs connection open and close events -->
+<configuration>
+
+	<appender name="STDDAILY" class="ch.qos.logback.core.rolling.RollingFileAppender">
+		<prudent>true</prudent>
+		<rollingPolicy class="ch.qos.logback.core.rolling.TimeBasedRollingPolicy">
+			<fileNamePattern>spyderRfidLogs/spyder_rfid.%d{yyyy-MM-dd}.log</fileNamePattern>
+			<maxHistory>30</maxHistory>
+		</rollingPolicy>
+		<filter class="ch.qos.logback.classic.filter.ThresholdFilter">
+			<level>DEBUG</level>
+		</filter>
+		<filter class="com.systemk.spyder.Config.Filter.LogbackFilter" />
+		
+		<encoder>
+			<pattern>%d{yyyyMMdd HH:mm:ss.SSS} [%thread] %-3level %logger{5} - %msg %n</pattern>
+		</encoder>
+	</appender>
+	
+	<!--  
+	<appender name="STASH" class="ch.qos.logback.core.rolling.RollingFileAppender">
+	    <rollingPolicy class="ch.qos.logback.core.rolling.TimeBasedRollingPolicy">
+	        <fileNamePattern>spyderRfidLogs/stash/spyder_rfid.%d{yyyy-MM-dd}.log</fileNamePattern>
+	        <maxHistory>30</maxHistory>
+	    </rollingPolicy>  
+	    <encoder class="net.logstash.logback.encoder.LogstashEncoder"/>
+	</appender>
+	-->
+
+	<appender name="STDOUT" class="ch.qos.logback.core.ConsoleAppender">
+		<filter class="com.systemk.spyder.Config.Filter.LogbackFilter" />
+		<!-- By default, encoders are assigned the type ch.qos.logback.classic.encoder.PatternLayoutEncoder -->
+		<encoder>
+			<pattern>%d{yyyyMMdd HH:mm:ss.SSS} [%thread] %-3level %logger{5} - %msg %n</pattern>
+		</encoder>
+	</appender>
+
+	<logger name="jdbc" level="OFF" />
+
+	<logger name="jdbc.sqlonly" level="INFO" additivity="false">
+		<appender-ref ref="STDOUT" />
+		<appender-ref ref="STDDAILY" />
+		<!-- 
+		<appender-ref ref="STASH" />
+		-->  
+	</logger>
+	<logger name="jdbc.resultsettable" level="INFO" additivity="false">
+		<appender-ref ref="STDOUT" />
+		<appender-ref ref="STDDAILY" />
+		<!-- 
+		<appender-ref ref="STASH" />
+		-->  
+	</logger>
+
+	<root level="INFO">
+		<appender-ref ref="STDOUT" />
+		<appender-ref ref="STDDAILY" />
+		<!-- 
+		<appender-ref ref="STASH" />
+		-->  
+	</root>
+
+</configuration>

@@ -1,0 +1,35 @@
+package com.systemk.spyder.Batch.TextUploadBatch.BartagTextUploadBatch;
+
+import java.util.List;
+import java.util.Set;
+
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.batch.item.ItemWriter;
+
+import com.systemk.spyder.Entity.Main.BatchTrigger;
+import com.systemk.spyder.Entity.Main.BatchTriggerDetail;
+import com.systemk.spyder.Service.RfidTagService;
+
+public class BartagTextUploadItemWriter implements ItemWriter<BatchTrigger> {
+
+	private static final Logger log = LoggerFactory.getLogger(BartagTextUploadItemWriter.class);
+	
+	private RfidTagService rfidTagService;
+	
+	public BartagTextUploadItemWriter(RfidTagService rfidTagService){
+		this.rfidTagService = rfidTagService;
+	}
+	
+	@Override
+	public void write(List<? extends BatchTrigger> triggerList) throws Exception {
+		
+		for(BatchTrigger trigger : triggerList){
+			Set<BatchTriggerDetail> detailSet = rfidTagService.textLoadBatch(trigger);
+			
+			trigger.setDetailSet(detailSet);
+		}
+		
+		log.info("바택 텍스트 업로드 배치 종료");
+	}
+}

@@ -1,0 +1,192 @@
+import hudson.node_monitors.*;
+
+def getFreeNode() {
+    def nodeName = ''
+    def nodeSize = 0
+    def maxJobCount = 2
+    
+    for (node in Jenkins.instance.nodes) {
+        computer = node.toComputer()
+        if (computer.getChannel() == null) continue
+        if (node.getComputer().countBusy() >= maxJobCount) continue
+    
+        diskSpace = DiskSpaceMonitor.DESCRIPTOR.get(computer)
+        if (diskSpace != null) {
+            size = diskSpace.size
+            if (size > nodeSize) {
+                nodeName = node.getDisplayName();
+                nodeSize = size;
+            }
+        }
+    }
+    
+    return nodeName
+}
+
+def build_node = getFreeNode()
+println("Build node - ${build_node}")
+def sns_info_channel_id  = '2793000324064885'
+def sns_error_channel_id = '2793000324064885'
+
+//node(build_node) {
+node() {
+    def commit_id
+    def sns_arn
+    def app_tag
+
+    try {
+        def freespace_threshold = 10
+        def activeProfile = 'test'
+    	def mvnHome
+    	def jiraIssueKey = 'SRA-8'
+    	def deployName = 'stage'
+    	
+        // sns_arn = 'arn:aws:sns:ap-northeast-2:021369310602:kop-log-sns'
+
+        if(env.BRANCH_NAME != null){
+            app_tag = env.BRANCH_NAME.split('/')[2]
+        } else {
+            app_tag = env.gitlabSourceBranch
+        }
+
+        if(app_tag == null) {
+            app_tag = 'master'
+        }
+
+        stage('Checkout') {
+            checkout changelog: true, poll: true, scm: [
+                $class: 'GitSCM',
+                branches: [[name: "origin/${app_tag}"]],
+                doGenerateSubmoduleConfigurations: false,
+                submoduleCfg: [],
+                userRemoteConfigs: [[
+                    credentialsId: 'jenkins_ssh',
+                    url: "git@gitlab.com:systemkdevgroup/rfidretail.git"
+                ]]
+            ]
+            println("branch_name : ${app_tag}")
+        }
+
+        stage('Commit') {
+            commit_id = sh(returnStdout: true, script: 'git rev-parse HEAD').trim().take(6)
+            println("commit id - ${commit_id}")
+
+            root = File.listRoots()[0];
+            space = (int)(root.getFreeSpace() / 1073741824)
+            println('disk space : ' + space + 'G')
+            if(space < freespace_threshold) {
+                throw new Exception('빌드 디스크 공간부족')
+            }
+
+            build_user = 'unknown'
+            wrap([$class: 'BuildUser']) {
+                build_tag = "${BUILD_TAG}"
+                try {
+                    build_user = "${BUILD_USER}"
+                } catch(e) {}
+            }
+
+            currentBuild.description = "⚙️ ${build_tag} / ${app_tag} / ${commit_id} / ${deployName} by ${build_user}"
+            message = "⚙️ ${build_tag} / ${app_tag} / ${commit_id} / ${deployName} - 빌드시작! by ${build_user}"
+            println(message)
+            // snsPublish(topicArn: sns_arn, subject: sns_info_channel_id, message: message)
+
+            def comment = [ body: message ]
+            jiraAddComment site: 'jenkins_jira', idOrKey: jiraIssueKey, input: comment
+
+        }
+
+        stage('Build') {
+        
+        	mvnHome = tool 'maven3'
+
+        	// Jenkins에서 메이븐 빌드
+            sh "'${mvnHome}/bin/mvn' -Dspring.profiles.active=${activeProfile} clean install"
+
+            message = "⚙️ ${build_tag} / ${app_tag} / ${commit_id} / ${deployName} - 빌드완료! by ${build_user}"
+            println(message)
+
+            def comment = [ body: message ]
+            jiraAddComment site: 'jenkins_jira', idOrKey: jiraIssueKey, input: comment
+        }
+
+        stage('Deploy'){
+
+            // 원격지 spring boot 서비스 중단
+            sshPublisher(publishers: [sshPublisherDesc(configName: 'spyder_windows',
+            										   transfers: [
+            										   		sshTransfer(execCommand: 'D:/spyder_jenkins_test/spyder_retail-1.0.exe stop')],
+            										   usePromotionTimestamp: false,
+            										   useWorkspaceInPromotion: false,
+            										   verbose: true)])
+
+            // 원격지 spring boot 파일 배포
+            sshPublisher(publishers: [sshPublisherDesc(configName: 'spyder_windows',
+            										   transfers: [
+            										   		sshTransfer(excludes: '',
+                                                                        execCommand: '',
+                                                                        execTimeout: 120000,
+                                                                        flatten: false,
+                                                                        makeEmptyDirs: false,
+                                                                        noDefaultExcludes: false,
+                                                                        patternSeparator: '[, ]+',
+                                                                        remoteDirectory: '/spyder_jenkins_test/',
+                                                                        remoteDirectorySDF: false,
+                                                                        removePrefix: 'target',
+                                                                        sourceFiles: 'target/*.war')],
+            										   usePromotionTimestamp: false,
+            										   useWorkspaceInPromotion: false,
+            										   verbose: true)])
+
+            // snsPublish(topicArn: sns_arn, subject: 'info', message: message)
+
+            message = "⚙️ ${build_tag} / ${app_tag} / ${commit_id} / ${deployName} - 배포완료! by ${build_user}"
+            println(message)
+
+            def comment = [ body: message ]
+            jiraAddComment site: 'jenkins_jira', idOrKey: jiraIssueKey, input: comment
+        }
+         
+        stage('Restart') {
+        
+        	// 원격지 spring boot 서비스 시작
+        	sshPublisher(publishers: [sshPublisherDesc(configName: 'spyder_windows', 
+            										   transfers: [
+            										   		sshTransfer(execCommand: 'D:/spyder_jenkins_test/spyder_retail-1.0.exe start')],
+            										   usePromotionTimestamp: false, 
+            										   useWorkspaceInPromotion: false,
+            										   verbose: true)])
+            
+            // snsPublish(topicArn: sns_arn, subject: 'info', message: message)
+        }
+
+        stage('Complete') {
+            message = "👍 ${build_tag} / ${app_tag} / ${commit_id} / ${deployName} - Jenkins 자동 빌드 & 배포 종료!"
+            println(message)
+
+            def comment = [ body: message ]
+            jiraAddComment site: 'jenkins_jira', idOrKey: jiraIssueKey, input: comment
+        }
+    } catch(hudson.AbortException ae) {
+        if(ae.getMessage().contains('143')) { 
+            message = "⚠️ ${build_tag} / ${app_tag} / ${commit_id} / ${deployName} - 빌드취소! by ${build_user}"
+            println(message)
+           //  snsPublish(topicArn: sns_arn, subject: sns_info_channel_id, message: message)
+
+            def comment = [ body: message ]
+            jiraAddComment site: 'jenkins_jira', idOrKey: jiraIssueKey, input: comment
+        }
+        
+        throw ae
+    } catch(e) {
+        message = "❌ ${build_tag} / ${app_tag} / ${commit_id} / ${deployName} - 빌드오류!\n```\n${e}\n```"
+        // snsPublish(topicArn: sns_arn, subject: sns_error_channel_id, message: message)
+
+        def comment = [ body: message ]
+        jiraAddComment site: 'jenkins_jira', idOrKey: jiraIssueKey, input: comment
+
+        throw e
+    } finally {
+
+    }  
+}

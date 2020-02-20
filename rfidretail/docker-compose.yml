@@ -1,0 +1,12 @@
+version: "3"
+
+services:
+  rfidapp:
+    image: 192.168.0.40:5000/rfid/spyder-app:latest
+    ports:
+      - "8080:8080"
+    container_name: spyder-app
+    environment:
+      spring_profiles_active: "test"
+    network_mode: bridge
+    restart: always
