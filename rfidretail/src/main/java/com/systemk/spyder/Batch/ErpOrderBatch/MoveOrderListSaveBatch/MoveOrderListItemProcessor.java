@@ -32,8 +32,7 @@ public class MoveOrderListItemProcessor implements ItemProcessor<RfidSd06If, Erp
     	erpStoreMove.setFromCompleteYn("N");
     	erpStoreMove.setToCompleteYn("N");
     	erpStoreMove.setSku(rfidSd06If.getSd06Styl()+rfidSd06If.getSd06Stcd());
-    	//rfid여부 ERP 확인후 추가
-    	
+    	//rfid여부 ERP 확인후 추가    	
         return erpStoreMove;
     }
 
